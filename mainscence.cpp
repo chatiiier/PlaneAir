@@ -26,6 +26,7 @@ Mainscence::Mainscence(const QString &nickname, QWidget *parent) :
 
     // 初始化游戏状态
     m_state = StatePlaying;
+    m_stateBeforePause = StatePlaying;
 
     // 保存玩家昵称
     m_playerNickname = nickname;
@@ -41,6 +42,11 @@ Mainscence::Mainscence(const QString &nickname, QWidget *parent) :
     resetBombs();
     resetEnemyBullets();
 
+    // 初始化 Boss
+    m_bossTriggered = false;
+    m_bossWarningElapsedMs = 0;
+    m_boss.reset();
+
     // 初始化随机种子（只调用一次）
     qsrand(static_cast<uint>(QTime::currentTime().msec()));
 
@@ -53,7 +59,9 @@ Mainscence::Mainscence(const QString &nickname, QWidget *parent) :
 
     // 连接定时器信号（只连接一次）
     connect(&m_timer, &QTimer::timeout, [=](){
-        if (m_state == StatePlaying)
+        switch (m_state)
+        {
+        case StatePlaying:
         {
             updateHeroPosition();
             updatePostion();
@@ -84,11 +92,48 @@ Mainscence::Mainscence(const QString &nickname, QWidget *parent) :
             // 爆炸动画
             updateBombs();
 
+            // 检查 Boss 触发
+            checkBossTrigger();
+
             // 检查玩家是否死亡
             if (m_hero.isDead())
             {
                 enterGameOver();
             }
+            break;
+        }
+        case StateBossWarning:
+        {
+            // WARNING 阶段：可移动和地图滚动，不射击不碰撞
+            updateHeroPosition();
+            updatePostion();
+            m_hero.updateDamageState(GAME_RATE);
+            updateBombs();
+            updateBossWarning();
+            break;
+        }
+        case StateBossFight:
+        {
+            updateHeroPosition();
+            updatePostion();
+            m_hero.updateWeapon(GAME_RATE);
+            updateHeroBullets();
+            updateBoss();
+            m_hero.updateDamageState(GAME_RATE);
+            updateBombs();
+
+            // Boss 战暂时无碰撞和敌机
+
+            if (m_hero.isDead())
+            {
+                enterGameOver();
+            }
+            break;
+        }
+        case StatePaused:
+        case StateGameOver:
+            // 不进行战斗更新
+            break;
         }
         update();
     });
@@ -133,7 +178,13 @@ void Mainscence::paintEvent(QPaintEvent *event)
     painter.drawPixmap(0, map.m_map1_PosY, map.m_map1);
     painter.drawPixmap(0, map.m_map2_PosY, map.m_map2);
 
-    // 2. 绘制敌机
+    // 2. 绘制 Boss（如果激活）
+    if (m_boss.isActive())
+    {
+        painter.drawPixmap(m_boss.m_x, m_boss.m_y, m_boss.m_pixmap);
+    }
+
+    // 3. 绘制敌机（普通阶段）
     for (int i = 0; i < ENEMY_POOL_SIZE; ++i)
     {
         if (!m_enemies[i].m_free)
@@ -146,7 +197,7 @@ void Mainscence::paintEvent(QPaintEvent *event)
         }
     }
 
-    // 3. 绘制敌方子弹
+    // 4. 绘制敌方子弹
     for (int i = 0; i < ENEMY_BULLET_POOL_SIZE; ++i)
     {
         if (!m_enemyBullets[i].m_free)
@@ -159,7 +210,7 @@ void Mainscence::paintEvent(QPaintEvent *event)
         }
     }
 
-    // 4. 绘制英雄子弹
+    // 5. 绘制英雄子弹
     for (int i = 0; i < HERO_BULLET_POOL_SIZE; ++i)
     {
         if (!m_hero.m_bullets[i].m_free)
@@ -172,7 +223,7 @@ void Mainscence::paintEvent(QPaintEvent *event)
         }
     }
 
-    // 5. 绘制爆炸动画
+    // 6. 绘制爆炸动画
     for (int i = 0; i < BOMB_POOL_SIZE; ++i)
     {
         if (!m_bombs[i].m_free
@@ -187,13 +238,13 @@ void Mainscence::paintEvent(QPaintEvent *event)
         }
     }
 
-    // 6. 绘制英雄机（无敌闪烁期间可能不绘制）
+    // 7. 绘制英雄机（无敌闪烁期间可能不绘制）
     if (m_hero.shouldDraw())
     {
         painter.drawPixmap(m_hero.m_x, m_hero.m_y, m_hero.m_plane);
     }
 
-    // 7. 绘制 HUD（昵称、生命、分数、弹药）
+    // 8. 绘制 HUD（昵称、生命、分数、弹药）
     {
         // 半透明底色
         painter.setBrush(QColor(0, 0, 0, 120));
@@ -242,27 +293,94 @@ void Mainscence::paintEvent(QPaintEvent *event)
                          Qt::AlignCenter, ammoText);
     }
 
-    // 8. 暂停遮罩
+    // 9. Boss 血条（入场和战斗中显示）
+    if (m_boss.isActive() && m_boss.m_maxHp > 0)
+    {
+        int barX = 10;
+        int barY = 100;
+        int barW = GAME_WIDTH - 20;
+        int barH = 18;
+
+        // 背景
+        painter.setBrush(QColor(40, 40, 40));
+        painter.setPen(QPen(QColor(80, 80, 80), 1));
+        painter.drawRect(barX, barY, barW, barH);
+
+        // 血量
+        int hpW = barW * m_boss.m_hp / m_boss.m_maxHp;
+        painter.setBrush(QColor(220, 30, 30));
+        painter.setPen(Qt::NoPen);
+        painter.drawRect(barX, barY, hpW, barH);
+
+        // 文字
+        painter.setPen(Qt::white);
+        QFont barFont;
+        barFont.setPixelSize(12);
+        barFont.setBold(true);
+        painter.setFont(barFont);
+        QString bossHpText = QStringLiteral("BOSS HP %1 / %2")
+                                 .arg(m_boss.m_hp)
+                                 .arg(m_boss.m_maxHp);
+        painter.drawText(QRect(barX, barY, barW, barH),
+                         Qt::AlignCenter, bossHpText);
+    }
+
+    // 10. WARNING 遮罩
+    if (m_state == StateBossWarning)
+    {
+        // 半透明红黑遮罩
+        painter.setBrush(QColor(80, 0, 0, 180));
+        painter.setPen(Qt::NoPen);
+        painter.drawRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+        QFont warnFont;
+        warnFont.setPixelSize(40);
+        warnFont.setBold(true);
+        painter.setFont(warnFont);
+
+        // 闪烁效果（基于剩余时间）
+        int remaining = BOSS_WARNING_TIME - m_bossWarningElapsedMs;
+        bool visible = true;
+        if (remaining > 0 && (remaining / 200) % 2 == 0)
+        {
+            visible = false;
+        }
+
+        if (visible)
+        {
+            painter.setPen(QColor(255, 60, 60));
+            painter.drawText(QRect(0, GAME_HEIGHT / 2 - 80, GAME_WIDTH, 60),
+                             Qt::AlignCenter,
+                             QStringLiteral("WARNING"));
+
+            QFont subFont;
+            subFont.setPixelSize(22);
+            subFont.setBold(false);
+            painter.setFont(subFont);
+            painter.setPen(Qt::white);
+            painter.drawText(QRect(0, GAME_HEIGHT / 2, GAME_WIDTH, 40),
+                             Qt::AlignCenter,
+                             QStringLiteral("BOSS 即将出现"));
+        }
+    }
+
+    // 11. 暂停遮罩
     if (m_state == StatePaused)
     {
-        // 半透明黑色遮罩
         painter.setBrush(QColor(0, 0, 0, 150));
         painter.setPen(Qt::NoPen);
         painter.drawRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
-        // 白色文字
         painter.setPen(Qt::white);
         QFont font;
         font.setPixelSize(32);
         font.setBold(true);
         painter.setFont(font);
 
-        // 第一行 "游戏已暂停"
         painter.drawText(QRect(0, 0, GAME_WIDTH, GAME_HEIGHT / 2),
                          Qt::AlignHCenter | Qt::AlignBottom,
                          QStringLiteral("游戏已暂停"));
 
-        // 第二行 "按 P 继续"
         font.setPixelSize(20);
         font.setBold(false);
         painter.setFont(font);
@@ -271,15 +389,13 @@ void Mainscence::paintEvent(QPaintEvent *event)
                          QStringLiteral("按 P 继续"));
     }
 
-    // 9. 游戏结束遮罩（结算窗口后背静态背景）
+    // 12. 游戏结束遮罩
     if (m_state == StateGameOver)
     {
-        // 半透明黑色遮罩
         painter.setBrush(QColor(0, 0, 0, 180));
         painter.setPen(Qt::NoPen);
         painter.drawRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
-        // 白色文字
         painter.setPen(Qt::white);
         QFont font;
         font.setPixelSize(36);
@@ -309,20 +425,23 @@ void Mainscence::keyPressEvent(QKeyEvent *event)
     if (event->key() == Qt::Key_Left  || event->key() == Qt::Key_A) { m_keyLeft  = true; return; }
     if (event->key() == Qt::Key_Right || event->key() == Qt::Key_D) { m_keyRight = true; return; }
 
-    // P 键：切换暂停（GameOver 时无效）
+    // P 键：切换暂停（Playing/Warning/Fight 均可暂停，GameOver 无效）
     if (event->key() == Qt::Key_P && !event->isAutoRepeat())
     {
-        if (m_state == StatePlaying || m_state == StatePaused)
+        if (m_state == StatePlaying
+            || m_state == StateBossWarning
+            || m_state == StateBossFight
+            || m_state == StatePaused)
         {
             togglePause();
         }
         return;
     }
 
-    // R 键：主动换弹，仅游戏进行中响应
+    // R 键：主动换弹，仅在 Playing 或 BossFight 时可使用
     if (event->key() == Qt::Key_R && !event->isAutoRepeat())
     {
-        if (m_state == StatePlaying)
+        if (m_state == StatePlaying || m_state == StateBossFight)
         {
             m_hero.startReload();
         }
@@ -336,19 +455,13 @@ void Mainscence::keyPressEvent(QKeyEvent *event)
 // 键盘释放事件
 void Mainscence::keyReleaseEvent(QKeyEvent *event)
 {
-    // 忽略自动重复产生的释放事件
-    if (event->isAutoRepeat())
-    {
-        return;
-    }
+    if (event->isAutoRepeat()) { return; }
 
-    // 方向键 / WASD：清除状态标志
     if (event->key() == Qt::Key_Up    || event->key() == Qt::Key_W) { m_keyUp    = false; return; }
     if (event->key() == Qt::Key_Down  || event->key() == Qt::Key_S) { m_keyDown  = false; return; }
     if (event->key() == Qt::Key_Left  || event->key() == Qt::Key_A) { m_keyLeft  = false; return; }
     if (event->key() == Qt::Key_Right || event->key() == Qt::Key_D) { m_keyRight = false; return; }
 
-    // 其他按键传递给基类
     QMainWindow::keyReleaseEvent(event);
 }
 
@@ -374,13 +487,11 @@ void Mainscence::updateHeroPosition()
     int x = m_hero.m_x;
     int y = m_hero.m_y;
 
-    // 根据按键状态计算新坐标
     if (m_keyUp)    { y -= HERO_SPEED; }
     if (m_keyDown)  { y += HERO_SPEED; }
     if (m_keyLeft)  { x -= HERO_SPEED; }
     if (m_keyRight) { x += HERO_SPEED; }
 
-    // 边界限制
     if (x < 0) { x = 0; }
     if (x > GAME_WIDTH - m_hero.m_plane.width())
         { x = GAME_WIDTH - m_hero.m_plane.width(); }
@@ -394,133 +505,91 @@ void Mainscence::updateHeroPosition()
 // 切换暂停/继续
 void Mainscence::togglePause()
 {
-    if (m_state == StatePlaying)
+    if (m_state == StatePaused)
     {
+        m_state = m_stateBeforePause;
+    }
+    else if (m_state != StateGameOver)
+    {
+        m_stateBeforePause = m_state;
         m_state = StatePaused;
         clearDirectionKeys();
     }
-    else if (m_state == StatePaused)
-    {
-        m_state = StatePlaying;
-    }
-    // StateGameOver 时忽略
 }
 
-// 生成敌机
+// ============ 敌机相关 ============
+
 void Mainscence::spawnEnemy()
 {
-    // 寻找空闲敌机槽位
     int freeIndex = -1;
     for (int i = 0; i < ENEMY_POOL_SIZE; ++i)
     {
-        if (m_enemies[i].m_free)
-        {
-            freeIndex = i;
-            break;
-        }
+        if (m_enemies[i].m_free) { freeIndex = i; break; }
     }
+    if (freeIndex == -1) { return; }
 
-    if (freeIndex == -1)
-    {
-        return; // 对象池已满
-    }
-
-    // 随机决定类型
     int randomValue = qrand() % 100;
-    EnemyType type = (randomValue < LIGHT_ENEMY_PROBABILITY)
-                         ? EnemyLight : EnemyHeavy;
+    EnemyType type = (randomValue < LIGHT_ENEMY_PROBABILITY) ? EnemyLight : EnemyHeavy;
 
-    // 通过预加载的 pixmap 计算合法 X 范围
     int pixW = m_enemies[freeIndex].pixmapWidthForType(type);
     int maxX = GAME_WIDTH - pixW;
-    if (maxX < 0)
-    {
-        maxX = 0;
-    }
+    if (maxX < 0) { maxX = 0; }
     int x = qrand() % (maxX + 1);
-    int y = -pixW; // 从屏幕顶部外出现
-    if (y > 0)
-    {
-        y = 0;
-    }
+    int y = -pixW;
+    if (y > 0) { y = 0; }
 
     m_enemies[freeIndex].activate(type, x, y);
 }
 
-// 更新所有活动敌机位置
 void Mainscence::updateEnemies()
 {
     for (int i = 0; i < ENEMY_POOL_SIZE; ++i)
     {
-        if (!m_enemies[i].m_free)
-        {
-            m_enemies[i].updatePosition();
-        }
+        if (!m_enemies[i].m_free) { m_enemies[i].updatePosition(); }
     }
 }
 
-// 重置所有敌机为初始空闲状态
 void Mainscence::resetEnemies()
 {
-    for (int i = 0; i < ENEMY_POOL_SIZE; ++i)
-    {
-        m_enemies[i].reset();
-    }
+    for (int i = 0; i < ENEMY_POOL_SIZE; ++i) { m_enemies[i].reset(); }
 }
 
-// 英雄子弹 vs 敌机 碰撞检测
+// ============ 碰撞 ============
+
 void Mainscence::checkHeroBulletEnemyCollisions()
 {
     for (int b = 0; b < HERO_BULLET_POOL_SIZE; ++b)
     {
-        if (m_hero.m_bullets[b].m_free)
-        {
-            continue;
-        }
-
+        if (m_hero.m_bullets[b].m_free) { continue; }
         bool bulletUsed = false;
 
         for (int e = 0; e < ENEMY_POOL_SIZE; ++e)
         {
-            if (m_enemies[e].m_free)
-            {
-                continue;
-            }
+            if (m_enemies[e].m_free) { continue; }
 
-            // QRect 碰撞检测
             if (m_hero.m_bullets[b].m_rect.intersects(m_enemies[e].m_rect))
             {
-                // 保存敌机信息（reset 前）
-                int centerX = m_enemies[e].m_x
-                              + m_enemies[e].m_pixmap.width() / 2;
-                int centerY = m_enemies[e].m_y
-                              + m_enemies[e].m_pixmap.height() / 2;
+                int centerX = m_enemies[e].m_x + m_enemies[e].m_pixmap.width() / 2;
+                int centerY = m_enemies[e].m_y + m_enemies[e].m_pixmap.height() / 2;
                 int scoreValue = m_enemies[e].m_scoreValue;
 
-                // 子弹回收
                 m_hero.m_bullets[b].reset();
                 bulletUsed = true;
-
-                // 敌机扣血
                 m_enemies[e].takeDamage(HERO_BULLET_DAMAGE);
 
-                // 敌机死亡处理
                 if (m_enemies[e].isDead())
                 {
                     activateBomb(centerX, centerY);
                     m_score += scoreValue;
                     m_enemies[e].reset();
                 }
-
-                break; // 子弹已回收，跳出内层循环
+                break;
             }
         }
-
         Q_UNUSED(bulletUsed);
     }
 }
 
-// 激活爆炸动画
 void Mainscence::activateBomb(int centerX, int centerY)
 {
     for (int i = 0; i < BOMB_POOL_SIZE; ++i)
@@ -531,28 +600,19 @@ void Mainscence::activateBomb(int centerX, int centerY)
             return;
         }
     }
-    // 对象池已满，丢弃本次爆炸视觉
 }
 
-// 更新所有活动爆炸动画
 void Mainscence::updateBombs()
 {
     for (int i = 0; i < BOMB_POOL_SIZE; ++i)
     {
-        if (!m_bombs[i].m_free)
-        {
-            m_bombs[i].updateAnimation(GAME_RATE);
-        }
+        if (!m_bombs[i].m_free) { m_bombs[i].updateAnimation(GAME_RATE); }
     }
 }
 
-// 重置所有爆炸对象
 void Mainscence::resetBombs()
 {
-    for (int i = 0; i < BOMB_POOL_SIZE; ++i)
-    {
-        m_bombs[i].reset();
-    }
+    for (int i = 0; i < BOMB_POOL_SIZE; ++i) { m_bombs[i].reset(); }
 }
 
 // ============ 敌机射击 ============
@@ -561,11 +621,7 @@ void Mainscence::updateEnemyShooting()
 {
     for (int i = 0; i < ENEMY_POOL_SIZE; ++i)
     {
-        if (m_enemies[i].m_free)
-        {
-            continue;
-        }
-
+        if (m_enemies[i].m_free) { continue; }
         if (m_enemies[i].updateAndCheckShoot(GAME_RATE))
         {
             spawnEnemyBullet(m_enemies[i]);
@@ -575,52 +631,26 @@ void Mainscence::updateEnemyShooting()
 
 void Mainscence::spawnEnemyBullet(EnemyPlane &enemy)
 {
-    if (enemy.m_free)
-    {
-        return;
-    }
+    if (enemy.m_free) { return; }
 
-    // 寻找空闲敌方子弹
     int freeIndex = -1;
     for (int i = 0; i < ENEMY_BULLET_POOL_SIZE; ++i)
     {
-        if (m_enemyBullets[i].m_free)
-        {
-            freeIndex = i;
-            break;
-        }
+        if (m_enemyBullets[i].m_free) { freeIndex = i; break; }
     }
+    if (freeIndex == -1) { return; }
 
-    if (freeIndex == -1)
-    {
-        return; // 对象池已满，丢弃本次射击
-    }
+    EnemyBulletType bulletType = (enemy.m_type == EnemyHeavy) ? EnemyBulletHeavy : EnemyBulletLight;
 
-    // 确定子弹类型
-    EnemyBulletType bulletType;
-    if (enemy.m_type == EnemyHeavy)
-    {
-        bulletType = EnemyBulletHeavy;
-    }
-    else
-    {
-        bulletType = EnemyBulletLight;
-    }
-
-    // 从敌机底部中心发射
     int bulletX = enemy.m_x + enemy.m_pixmap.width() / 2;
     int bulletY = enemy.m_y + enemy.m_pixmap.height();
 
     m_enemyBullets[freeIndex].activate(bulletType, bulletX, bulletY);
 
-    // 激活后调整 X 使子弹居中于敌机
     if (m_enemyBullets[freeIndex].m_pixmap.width() > 0)
     {
-        m_enemyBullets[freeIndex].m_x =
-            bulletX - m_enemyBullets[freeIndex].m_pixmap.width() / 2;
-        m_enemyBullets[freeIndex].m_rect.moveTo(
-            m_enemyBullets[freeIndex].m_x,
-            m_enemyBullets[freeIndex].m_y);
+        m_enemyBullets[freeIndex].m_x = bulletX - m_enemyBullets[freeIndex].m_pixmap.width() / 2;
+        m_enemyBullets[freeIndex].m_rect.moveTo(m_enemyBullets[freeIndex].m_x, m_enemyBullets[freeIndex].m_y);
     }
 }
 
@@ -628,127 +658,131 @@ void Mainscence::updateEnemyBullets()
 {
     for (int i = 0; i < ENEMY_BULLET_POOL_SIZE; ++i)
     {
-        if (!m_enemyBullets[i].m_free)
-        {
-            m_enemyBullets[i].updatePosition();
-        }
+        if (!m_enemyBullets[i].m_free) { m_enemyBullets[i].updatePosition(); }
     }
 }
 
 void Mainscence::resetEnemyBullets()
 {
-    for (int i = 0; i < ENEMY_BULLET_POOL_SIZE; ++i)
-    {
-        m_enemyBullets[i].reset();
-    }
+    for (int i = 0; i < ENEMY_BULLET_POOL_SIZE; ++i) { m_enemyBullets[i].reset(); }
 }
-
-// ============ 敌方子弹 vs 英雄机碰撞 ============
 
 void Mainscence::checkEnemyBulletHeroCollisions()
 {
     for (int i = 0; i < ENEMY_BULLET_POOL_SIZE; ++i)
     {
-        if (m_enemyBullets[i].m_free)
-        {
-            continue;
-        }
-
+        if (m_enemyBullets[i].m_free) { continue; }
         if (m_enemyBullets[i].m_rect.intersects(m_hero.m_rect))
         {
             int damage = m_enemyBullets[i].m_damage;
-
-            // 回收敌方子弹
             m_enemyBullets[i].reset();
-
-            // 伤害英雄机
             m_hero.takeDamage(damage);
-
-            // 如果玩家死亡，不再继续检查后续子弹
-            if (m_hero.isDead())
-            {
-                return;
-            }
+            if (m_hero.isDead()) { return; }
         }
     }
 }
-
-// ============ 敌机 vs 英雄机碰撞 ============
 
 void Mainscence::checkEnemyHeroCollisions()
 {
     for (int i = 0; i < ENEMY_POOL_SIZE; ++i)
     {
-        if (m_enemies[i].m_free)
-        {
-            continue;
-        }
-
+        if (m_enemies[i].m_free) { continue; }
         if (m_enemies[i].m_rect.intersects(m_hero.m_rect))
         {
-            // 保存位置信息后销毁敌机
-            int centerX = m_enemies[i].m_x
-                          + m_enemies[i].m_pixmap.width() / 2;
-            int centerY = m_enemies[i].m_y
-                          + m_enemies[i].m_pixmap.height() / 2;
-
-            // 激活爆炸
+            int centerX = m_enemies[i].m_x + m_enemies[i].m_pixmap.width() / 2;
+            int centerY = m_enemies[i].m_y + m_enemies[i].m_pixmap.height() / 2;
             activateBomb(centerX, centerY);
-
-            // 销毁敌机（不加分）
             m_enemies[i].reset();
-
-            // 对英雄机造成 1 点伤害
             m_hero.takeDamage(1);
-
-            // 如果玩家死亡，停止后续检测
-            if (m_hero.isDead())
-            {
-                return;
-            }
+            if (m_hero.isDead()) { return; }
         }
     }
+}
+
+// ============ Boss 相关 ============
+
+void Mainscence::checkBossTrigger()
+{
+    if (!m_bossTriggered && m_score >= BOSS_TRIGGER_SCORE)
+    {
+        enterBossWarning();
+    }
+}
+
+void Mainscence::enterBossWarning()
+{
+    if (m_bossTriggered) { return; }
+    m_bossTriggered = true;
+
+    m_bossWarningElapsedMs = 0;
+    m_state = StateBossWarning;
+    clearDirectionKeys();
+    clearNormalEnemiesForBoss();
+    update();
+}
+
+void Mainscence::clearNormalEnemiesForBoss()
+{
+    // 清除所有普通敌机（不产生爆炸，不加分）
+    for (int i = 0; i < ENEMY_POOL_SIZE; ++i)
+    {
+        m_enemies[i].reset();
+    }
+    // 清除所有敌方子弹
+    for (int i = 0; i < ENEMY_BULLET_POOL_SIZE; ++i)
+    {
+        m_enemyBullets[i].reset();
+    }
+    // 清除所有英雄子弹
+    for (int i = 0; i < HERO_BULLET_POOL_SIZE; ++i)
+    {
+        m_hero.m_bullets[i].reset();
+    }
+    m_enemySpawnElapsedMs = 0;
+}
+
+void Mainscence::updateBossWarning()
+{
+    m_bossWarningElapsedMs += GAME_RATE;
+    if (m_bossWarningElapsedMs >= BOSS_WARNING_TIME)
+    {
+        startBossFight();
+    }
+}
+
+void Mainscence::startBossFight()
+{
+    m_bossWarningElapsedMs = BOSS_WARNING_TIME;
+    m_boss.activate();
+    m_state = StateBossFight;
+    clearDirectionKeys();
+    update();
+}
+
+void Mainscence::updateBoss()
+{
+    m_boss.updatePosition();
 }
 
 // ============ 游戏结束 ============
 
 void Mainscence::enterGameOver()
 {
-    // 只执行一次
-    if (m_state == StateGameOver)
-    {
-        return;
-    }
+    if (m_state == StateGameOver) { return; }
 
     m_state = StateGameOver;
-
-    // 清空方向键状态，停止移动
     clearDirectionKeys();
-
-    // 强制显示英雄机
     m_hero.m_visible = true;
 
-    // 保存成绩（一局只写一次）
     saveRankOnce();
-
-    // 显示结算窗口（只显示一次）
     showResultDialog();
 }
 
 void Mainscence::saveRankOnce()
 {
-    if (m_rankSaved)
-    {
-        return;
-    }
-    if (m_playerNickname.isEmpty())
-    {
-        return;
-    }
-    if (m_score < 0)
-    {
-        return;
-    }
+    if (m_rankSaved) { return; }
+    if (m_playerNickname.isEmpty()) { return; }
+    if (m_score < 0) { return; }
 
     m_rankSaved = true;
 
@@ -758,27 +792,15 @@ void Mainscence::saveRankOnce()
 
 void Mainscence::showResultDialog()
 {
-    // 防止重复创建
-    if (m_resultShown)
-    {
-        return;
-    }
+    if (m_resultShown) { return; }
     m_resultShown = true;
 
-    // 读取历史最高分
     RankManager manager;
     int bestScore = manager.bestScoreFor(m_playerNickname);
 
-    // 当前阶段只使用失败模式
-    ResultDialog dialog(ResultDefeat,
-                        m_playerNickname,
-                        m_score,
-                        bestScore,
-                        this);
-
+    ResultDialog dialog(ResultDefeat, m_playerNickname, m_score, bestScore, this);
     int action = dialog.exec();
 
-    // 处理结算操作
     if (action == ActionRestart)
     {
         resetGame();
@@ -789,7 +811,6 @@ void Mainscence::showResultDialog()
     }
     else
     {
-        // ActionReturnLogin / Rejected / 未知
         close();
     }
 }
@@ -798,40 +819,32 @@ void Mainscence::showResultDialog()
 
 void Mainscence::resetGame()
 {
-    // 游戏状态
     m_state       = StatePlaying;
+    m_stateBeforePause = StatePlaying;
     m_resultShown = false;
     m_rankSaved   = false;
 
-    // 清空按键
     clearDirectionKeys();
-
-    // 分数清零
     m_score = 0;
 
-    // 英雄机重置：位置、武器、生命
     m_hero.setPostion(GAME_WIDTH * 0.5 - m_hero.m_plane.width() * 0.5,
                       GAME_HEIGHT - m_hero.m_plane.height());
     m_hero.resetWeapon();
     m_hero.resetHealth();
 
-    // 地图复位
     map.resetPosition();
 
-    // 敌机池
     m_enemySpawnElapsedMs = 0;
     resetEnemies();
-
-    // 敌方子弹池
     resetEnemyBullets();
-
-    // 爆炸池
     resetBombs();
 
-    // 恢复焦点
-    setFocus();
+    // Boss 重置
+    m_bossTriggered = false;
+    m_bossWarningElapsedMs = 0;
+    m_boss.reset();
 
-    // 刷新画面
+    setFocus();
     update();
 }
 

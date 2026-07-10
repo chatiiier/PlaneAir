@@ -13,12 +13,15 @@
 #include "enemyplane.h"
 #include "enemybullet.h"
 #include "bomb.h"
+#include "bossplane.h"
 
-// 游戏状态枚举，为后续 Boss 状态机预留扩展
+// 游戏状态枚举
 enum GameState
 {
     StatePlaying,
     StatePaused,
+    StateBossWarning,
+    StateBossFight,
     StateGameOver
 };
 
@@ -75,6 +78,7 @@ private:
 
     // 游戏状态
     GameState m_state;
+    GameState m_stateBeforePause;
 
     // 玩家昵称
     QString m_playerNickname;
@@ -97,6 +101,11 @@ private:
     // 结算状态
     bool m_resultShown;
     bool m_rankSaved;
+
+    // Boss
+    BossPlane m_boss;
+    bool m_bossTriggered;
+    int  m_bossWarningElapsedMs;
 
     // 清空所有方向键状态
     void clearDirectionKeys();
@@ -125,6 +134,14 @@ private:
     void spawnEnemyBullet(EnemyPlane &enemy);
     void updateEnemyBullets();
     void resetEnemyBullets();
+
+    // Boss 相关
+    void checkBossTrigger();
+    void enterBossWarning();
+    void updateBossWarning();
+    void startBossFight();
+    void updateBoss();
+    void clearNormalEnemiesForBoss();
 
     // 游戏结束
     void enterGameOver();

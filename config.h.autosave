@@ -24,14 +24,14 @@
 #define HERO_BULLET_POOL_SIZE 50
 
 // 弹夹配置
-#define HERO_MAGAZINE_CAPACITY 1000
+#define HERO_MAGAZINE_CAPACITY 30
 #define HERO_SHOOT_INTERVAL    150
 #define HERO_RELOAD_TIME       1000
 
 #define HERO_BULLET_DAMAGE 1
 
 // 玩家生命与无敌配置
-#define HERO_MAX_HP          1000
+#define HERO_MAX_HP          5
 #define HERO_INVINCIBLE_TIME 1000
 #define HERO_BLINK_INTERVAL  100
 

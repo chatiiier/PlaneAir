@@ -32,6 +32,7 @@ SOURCES += \
     herobullet.cpp \
     enemyplane.cpp \
     enemybullet.cpp \
+    bossplane.cpp \
     bomb.cpp \
     loginwindow.cpp \
     rankmanager.cpp \
@@ -46,6 +47,7 @@ HEADERS += \
     herobullet.h \
     enemyplane.h \
     enemybullet.h \
+    bossplane.h \
     bomb.h \
     loginwindow.h \
     rankmanager.h \
