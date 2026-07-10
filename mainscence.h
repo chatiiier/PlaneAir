@@ -94,6 +94,10 @@ private:
     // 分数
     int m_score;
 
+    // 结算状态
+    bool m_resultShown;
+    bool m_rankSaved;
+
     // 清空所有方向键状态
     void clearDirectionKeys();
 
@@ -124,6 +128,11 @@ private:
 
     // 游戏结束
     void enterGameOver();
+    void saveRankOnce();
+    void showResultDialog();
+
+    // 重置游戏（重新开始）
+    void resetGame();
 
     // 切换暂停/继续
     void togglePause();

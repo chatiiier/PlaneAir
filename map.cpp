@@ -8,17 +8,15 @@ Map::Map()
     m_map1.load(MAP_PATH);
     m_map2.load(MAP_PATH);
 
-    // 设置图的位置
+    m_scoll_speed = MAP_SCOLL_SPEED;
 
-    m_map1_PosY =-GAME_HEIGHT; // 在屏幕的上方外
+    resetPosition();
+}
 
-    m_map2_PosY = 0; // 在屏幕内
-
-    m_scoll_speed =MAP_SCOLL_SPEED;
-
-
-
-
+void Map::resetPosition()
+{
+    m_map1_PosY = -GAME_HEIGHT; // 在屏幕的上方外
+    m_map2_PosY = 0;            // 在屏幕内
 }
 
 // 实现地图坐标更新

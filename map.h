@@ -12,6 +12,9 @@ public:
 
     void MapPosition();
 
+    // 重置地图到初始位置
+    void resetPosition();
+
 
     QPixmap m_map1; // 第一张背景图
 

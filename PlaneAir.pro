@@ -35,7 +35,8 @@ SOURCES += \
     bomb.cpp \
     loginwindow.cpp \
     rankmanager.cpp \
-    rankdialog.cpp
+    rankdialog.cpp \
+    resultdialog.cpp
 
 HEADERS += \
         mainscence.h \
@@ -48,7 +49,8 @@ HEADERS += \
     bomb.h \
     loginwindow.h \
     rankmanager.h \
-    rankdialog.h
+    rankdialog.h \
+    resultdialog.h
 
 FORMS += \
         mainscence.ui

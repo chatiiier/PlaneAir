@@ -3,6 +3,9 @@
 #include <QPainter>
 #include <QIcon>
 #include <QTime>
+#include <QApplication>
+#include "resultdialog.h"
+#include "rankmanager.h"
 
 Mainscence::Mainscence(const QString &nickname, QWidget *parent) :
     QMainWindow(parent),
@@ -33,6 +36,8 @@ Mainscence::Mainscence(const QString &nickname, QWidget *parent) :
 
     // 初始化爆炸和分数
     m_score = 0;
+    m_resultShown = false;
+    m_rankSaved   = false;
     resetBombs();
     resetEnemyBullets();
 
@@ -266,7 +271,7 @@ void Mainscence::paintEvent(QPaintEvent *event)
                          QStringLiteral("按 P 继续"));
     }
 
-    // 9. 游戏结束遮罩
+    // 9. 游戏结束遮罩（结算窗口后背静态背景）
     if (m_state == StateGameOver)
     {
         // 半透明黑色遮罩
@@ -292,10 +297,6 @@ void Mainscence::paintEvent(QPaintEvent *event)
         QString finalScoreText = QStringLiteral("最终分数：%1").arg(m_score);
         painter.drawText(QRect(0, GAME_HEIGHT / 2 - 10, GAME_WIDTH, 30),
                          Qt::AlignCenter, finalScoreText);
-
-        painter.drawText(QRect(0, GAME_HEIGHT / 2 + 40, GAME_WIDTH, 30),
-                         Qt::AlignCenter,
-                         QStringLiteral("关闭窗口返回登录"));
     }
 }
 
@@ -726,6 +727,112 @@ void Mainscence::enterGameOver()
 
     // 强制显示英雄机
     m_hero.m_visible = true;
+
+    // 保存成绩（一局只写一次）
+    saveRankOnce();
+
+    // 显示结算窗口（只显示一次）
+    showResultDialog();
+}
+
+void Mainscence::saveRankOnce()
+{
+    if (m_rankSaved)
+    {
+        return;
+    }
+    if (m_playerNickname.isEmpty())
+    {
+        return;
+    }
+    if (m_score < 0)
+    {
+        return;
+    }
+
+    m_rankSaved = true;
+
+    RankManager manager;
+    manager.updateBestScore(m_playerNickname, m_score);
+}
+
+void Mainscence::showResultDialog()
+{
+    // 防止重复创建
+    if (m_resultShown)
+    {
+        return;
+    }
+    m_resultShown = true;
+
+    // 读取历史最高分
+    RankManager manager;
+    int bestScore = manager.bestScoreFor(m_playerNickname);
+
+    // 当前阶段只使用失败模式
+    ResultDialog dialog(ResultDefeat,
+                        m_playerNickname,
+                        m_score,
+                        bestScore,
+                        this);
+
+    int action = dialog.exec();
+
+    // 处理结算操作
+    if (action == ActionRestart)
+    {
+        resetGame();
+    }
+    else if (action == ActionExitGame)
+    {
+        QApplication::quit();
+    }
+    else
+    {
+        // ActionReturnLogin / Rejected / 未知
+        close();
+    }
+}
+
+// ============ 重新开始 ============
+
+void Mainscence::resetGame()
+{
+    // 游戏状态
+    m_state       = StatePlaying;
+    m_resultShown = false;
+    m_rankSaved   = false;
+
+    // 清空按键
+    clearDirectionKeys();
+
+    // 分数清零
+    m_score = 0;
+
+    // 英雄机重置：位置、武器、生命
+    m_hero.setPostion(GAME_WIDTH * 0.5 - m_hero.m_plane.width() * 0.5,
+                      GAME_HEIGHT - m_hero.m_plane.height());
+    m_hero.resetWeapon();
+    m_hero.resetHealth();
+
+    // 地图复位
+    map.resetPosition();
+
+    // 敌机池
+    m_enemySpawnElapsedMs = 0;
+    resetEnemies();
+
+    // 敌方子弹池
+    resetEnemyBullets();
+
+    // 爆炸池
+    resetBombs();
+
+    // 恢复焦点
+    setFocus();
+
+    // 刷新画面
+    update();
 }
 
 Mainscence::~Mainscence()
