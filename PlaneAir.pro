@@ -28,13 +28,15 @@ SOURCES += \
         main.cpp \
         mainscence.cpp \
     map.cpp \
-    heroplane.cpp
+    heroplane.cpp \
+    herobullet.cpp
 
 HEADERS += \
         mainscence.h \
     config.h \
     map.h \
-    heroplane.h
+    heroplane.h \
+    herobullet.h
 
 FORMS += \
         mainscence.ui

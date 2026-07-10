@@ -36,6 +36,8 @@ Mainscence::Mainscence(QWidget *parent) :
         {
             updateHeroPosition();
             updatePostion();
+            m_hero.updateWeapon(GAME_RATE);
+            updateHeroBullets();
         }
         update();
     });
@@ -56,6 +58,18 @@ void Mainscence::updatePostion()
     map.MapPosition();
 }
 
+// 更新英雄子弹位置
+void Mainscence::updateHeroBullets()
+{
+    for (int i = 0; i < HERO_BULLET_POOL_SIZE; ++i)
+    {
+        if (!m_hero.m_bullets[i].m_free)
+        {
+            m_hero.m_bullets[i].updatePosition();
+        }
+    }
+}
+
 // 地图绘制
 void Mainscence::paintEvent(QPaintEvent *event)
 {
@@ -64,14 +78,55 @@ void Mainscence::paintEvent(QPaintEvent *event)
     // 定义画家
     QPainter painter(this);
 
-    // 绘制地图
+    // 1. 绘制地图
     painter.drawPixmap(0, map.m_map1_PosY, map.m_map1);
     painter.drawPixmap(0, map.m_map2_PosY, map.m_map2);
 
-    // 绘制英雄机
+    // 2. 绘制英雄子弹
+    for (int i = 0; i < HERO_BULLET_POOL_SIZE; ++i)
+    {
+        if (!m_hero.m_bullets[i].m_free)
+        {
+            painter.drawPixmap(
+                m_hero.m_bullets[i].m_x,
+                m_hero.m_bullets[i].m_y,
+                m_hero.m_bullets[i].m_bullet
+            );
+        }
+    }
+
+    // 3. 绘制英雄机
     painter.drawPixmap(m_hero.m_x, m_hero.m_y, m_hero.m_plane);
 
-    // 暂停遮罩
+    // 4. 绘制弹药 HUD
+    {
+        // 半透明底色
+        painter.setBrush(QColor(0, 0, 0, 120));
+        painter.setPen(Qt::NoPen);
+        painter.drawRect(0, 0, GAME_WIDTH, 30);
+
+        painter.setPen(Qt::white);
+        QFont hudFont;
+        hudFont.setPixelSize(16);
+        hudFont.setBold(true);
+        painter.setFont(hudFont);
+
+        QString ammoText;
+        if (m_hero.m_reloading)
+        {
+            ammoText = QStringLiteral("弹药：换弹中……");
+        }
+        else
+        {
+            ammoText = QStringLiteral("弹药：%1 / %2")
+                           .arg(m_hero.m_currentAmmo)
+                           .arg(HERO_MAGAZINE_CAPACITY);
+        }
+        painter.drawText(QRect(0, 0, GAME_WIDTH, 30),
+                         Qt::AlignCenter, ammoText);
+    }
+
+    // 5. 暂停遮罩
     if (m_state == StatePaused)
     {
         // 半透明黑色遮罩
@@ -114,6 +169,16 @@ void Mainscence::keyPressEvent(QKeyEvent *event)
     if (event->key() == Qt::Key_P && !event->isAutoRepeat())
     {
         togglePause();
+        return;
+    }
+
+    // R 键：主动换弹，仅游戏进行中响应
+    if (event->key() == Qt::Key_R && !event->isAutoRepeat())
+    {
+        if (m_state == StatePlaying)
+        {
+            m_hero.startReload();
+        }
         return;
     }
 

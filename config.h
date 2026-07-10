@@ -18,5 +18,15 @@
 #define HERO_PLANE ":/res/hero2.png"
 #define HERO_SPEED 2
 
+// 英雄子弹配置
+#define HERO_BULLET_PATH      ":/res/hero_bullet_7.png"
+#define HERO_BULLET_SPEED     8
+#define HERO_BULLET_POOL_SIZE 50
+
+// 弹夹配置
+#define HERO_MAGAZINE_CAPACITY 20
+#define HERO_SHOOT_INTERVAL    150
+#define HERO_RELOAD_TIME       1000
+
 #endif // CONFIG_H
 

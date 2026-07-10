@@ -77,6 +77,9 @@ private:
     // 更新英雄机位置
     void updateHeroPosition();
 
+    // 更新英雄子弹位置
+    void updateHeroBullets();
+
     // 切换暂停/继续
     void togglePause();
 };
