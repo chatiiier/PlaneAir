@@ -29,14 +29,24 @@ SOURCES += \
         mainscence.cpp \
     map.cpp \
     heroplane.cpp \
-    herobullet.cpp
+    herobullet.cpp \
+    enemyplane.cpp \
+    bomb.cpp \
+    loginwindow.cpp \
+    rankmanager.cpp \
+    rankdialog.cpp
 
 HEADERS += \
         mainscence.h \
     config.h \
     map.h \
     heroplane.h \
-    herobullet.h
+    herobullet.h \
+    enemyplane.h \
+    bomb.h \
+    loginwindow.h \
+    rankmanager.h \
+    rankdialog.h
 
 FORMS += \
         mainscence.ui

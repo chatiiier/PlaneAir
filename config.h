@@ -28,5 +28,35 @@
 #define HERO_SHOOT_INTERVAL    150
 #define HERO_RELOAD_TIME       1000
 
+#define HERO_BULLET_DAMAGE 1
+
+// 爆炸动画配置
+#define BOMB_POOL_SIZE     20
+#define BOMB_FRAME_COUNT   7
+#define BOMB_FRAME_INTERVAL 60
+
+#define BOMB_PATH_1 ":/res/bomb-1.png"
+#define BOMB_PATH_2 ":/res/bomb-2.png"
+#define BOMB_PATH_3 ":/res/bomb-3.png"
+#define BOMB_PATH_4 ":/res/bomb-4.png"
+#define BOMB_PATH_5 ":/res/bomb-5.png"
+#define BOMB_PATH_6 ":/res/bomb-6.png"
+#define BOMB_PATH_7 ":/res/bomb-7.png"
+
+// 敌机配置
+#define ENEMY_POOL_SIZE        20
+#define ENEMY_SPAWN_INTERVAL   700
+
+#define LIGHT_ENEMY_PATH       ":/res/img-plane_1.png"
+#define LIGHT_ENEMY_HP         2
+#define LIGHT_ENEMY_SPEED      4
+#define LIGHT_ENEMY_SCORE      10
+#define LIGHT_ENEMY_PROBABILITY 70
+
+#define HEAVY_ENEMY_PATH       ":/res/img-plane_7.png"
+#define HEAVY_ENEMY_HP         8
+#define HEAVY_ENEMY_SPEED      2
+#define HEAVY_ENEMY_SCORE      30
+
 #endif // CONFIG_H
 
