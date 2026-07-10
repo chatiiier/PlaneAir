@@ -26,6 +26,13 @@ public:
     // 重置武器状态
     void resetWeapon();
 
+    // 生命值与无敌状态
+    void resetHealth();
+    bool takeDamage(int damage);
+    void updateDamageState(int deltaMs);
+    bool isDead() const;
+    bool shouldDraw() const;
+
     // 飞机资源
     QPixmap m_plane;
 
@@ -42,6 +49,18 @@ public:
     bool m_reloading;
     int  m_shootElapsedMs;
     int  m_reloadElapsedMs;
+
+    // 生命值
+    int m_hp;
+    int m_maxHp;
+
+    // 无敌状态
+    bool m_invincible;
+    int  m_invincibleElapsedMs;
+
+    // 闪烁
+    int  m_blinkElapsedMs;
+    bool m_visible;
 };
 
 #endif // HEROPLANE_H

@@ -24,6 +24,10 @@ public:
     bool isDead() const;
     void reset();
 
+    // 射击计时
+    bool updateAndCheckShoot(int deltaMs);
+    void resetShootTimer();
+
     // 根据类型返回预加载图片的宽度（用于 spawnEnemy 计算合法 X）
     int pixmapWidthForType(EnemyType type) const;
 
@@ -47,6 +51,10 @@ public:
 
     int m_horizontalDirection;
     int m_moveRecorder;
+
+    // 射击计时（每架敌机独立）
+    int m_shootElapsedMs;
+    int m_shootInterval;
 };
 
 #endif // ENEMYPLANE_H

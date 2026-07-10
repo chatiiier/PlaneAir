@@ -12,6 +12,8 @@ EnemyPlane::EnemyPlane()
     , m_free(true)
     , m_horizontalDirection(1)
     , m_moveRecorder(0)
+    , m_shootElapsedMs(0)
+    , m_shootInterval(0)
 {
     m_pixmapLight.load(LIGHT_ENEMY_PATH);
     if (m_pixmapLight.isNull())
@@ -41,19 +43,21 @@ void EnemyPlane::activate(EnemyType type, int x, int y)
 
     if (type == EnemyLight)
     {
-        m_pixmap     = m_pixmapLight;
-        m_hp         = LIGHT_ENEMY_HP;
-        m_maxHp      = LIGHT_ENEMY_HP;
-        m_speed      = LIGHT_ENEMY_SPEED;
-        m_scoreValue = LIGHT_ENEMY_SCORE;
+        m_pixmap        = m_pixmapLight;
+        m_hp            = LIGHT_ENEMY_HP;
+        m_maxHp         = LIGHT_ENEMY_HP;
+        m_speed         = LIGHT_ENEMY_SPEED;
+        m_scoreValue    = LIGHT_ENEMY_SCORE;
+        m_shootInterval = LIGHT_ENEMY_SHOOT_INTERVAL;
     }
     else
     {
-        m_pixmap     = m_pixmapHeavy;
-        m_hp         = HEAVY_ENEMY_HP;
-        m_maxHp      = HEAVY_ENEMY_HP;
-        m_speed      = HEAVY_ENEMY_SPEED;
-        m_scoreValue = HEAVY_ENEMY_SCORE;
+        m_pixmap        = m_pixmapHeavy;
+        m_hp            = HEAVY_ENEMY_HP;
+        m_maxHp         = HEAVY_ENEMY_HP;
+        m_speed         = HEAVY_ENEMY_SPEED;
+        m_scoreValue    = HEAVY_ENEMY_SCORE;
+        m_shootInterval = HEAVY_ENEMY_SHOOT_INTERVAL;
     }
 
     m_x = x;
@@ -61,7 +65,8 @@ void EnemyPlane::activate(EnemyType type, int x, int y)
     m_free = false;
 
     m_horizontalDirection = 1;
-    m_moveRecorder = 0;
+    m_moveRecorder  = 0;
+    m_shootElapsedMs = 0;
 
     m_rect.setWidth(m_pixmap.width());
     m_rect.setHeight(m_pixmap.height());
@@ -134,4 +139,32 @@ void EnemyPlane::reset()
     m_rect.moveTo(-100, -100);
     m_x = 0;
     m_y = 0;
+    m_shootElapsedMs = 0;
+}
+
+bool EnemyPlane::updateAndCheckShoot(int deltaMs)
+{
+    if (m_free)
+    {
+        return false;
+    }
+
+    // 敌机尚未进入可见区域时不射击
+    if (m_y + m_pixmap.height() < 0)
+    {
+        return false;
+    }
+
+    m_shootElapsedMs += deltaMs;
+    if (m_shootElapsedMs >= m_shootInterval)
+    {
+        m_shootElapsedMs = 0;
+        return true;
+    }
+    return false;
+}
+
+void EnemyPlane::resetShootTimer()
+{
+    m_shootElapsedMs = 0;
 }

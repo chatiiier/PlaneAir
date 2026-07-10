@@ -30,6 +30,24 @@
 
 #define HERO_BULLET_DAMAGE 1
 
+// 玩家生命与无敌配置
+#define HERO_MAX_HP          3
+#define HERO_INVINCIBLE_TIME 1000
+#define HERO_BLINK_INTERVAL  100
+
+// 敌方子弹配置
+#define ENEMY_BULLET_POOL_SIZE 80
+
+#define LIGHT_ENEMY_BULLET_PATH  ":/res/bullet_4.png"
+#define LIGHT_ENEMY_SHOOT_INTERVAL 700
+#define LIGHT_ENEMY_BULLET_SPEED   6
+#define LIGHT_ENEMY_BULLET_DAMAGE  1
+
+#define HEAVY_ENEMY_BULLET_PATH  ":/res/bullet_6.png"
+#define HEAVY_ENEMY_SHOOT_INTERVAL 1600
+#define HEAVY_ENEMY_BULLET_SPEED   4
+#define HEAVY_ENEMY_BULLET_DAMAGE  2
+
 // 爆炸动画配置
 #define BOMB_POOL_SIZE     20
 #define BOMB_FRAME_COUNT   7

@@ -11,13 +11,15 @@
 #include "map.h"
 #include "heroplane.h"
 #include "enemyplane.h"
+#include "enemybullet.h"
 #include "bomb.h"
 
 // 游戏状态枚举，为后续 Boss 状态机预留扩展
 enum GameState
 {
     StatePlaying,
-    StatePaused
+    StatePaused,
+    StateGameOver
 };
 
 namespace Ui {
@@ -86,6 +88,9 @@ private:
     // 爆炸对象池
     Bomb m_bombs[BOMB_POOL_SIZE];
 
+    // 敌方子弹对象池
+    EnemyBullet m_enemyBullets[ENEMY_BULLET_POOL_SIZE];
+
     // 分数
     int m_score;
 
@@ -105,9 +110,20 @@ private:
 
     // 碰撞与爆炸
     void checkHeroBulletEnemyCollisions();
+    void checkEnemyBulletHeroCollisions();
+    void checkEnemyHeroCollisions();
     void activateBomb(int centerX, int centerY);
     void updateBombs();
     void resetBombs();
+
+    // 敌机射击
+    void updateEnemyShooting();
+    void spawnEnemyBullet(EnemyPlane &enemy);
+    void updateEnemyBullets();
+    void resetEnemyBullets();
+
+    // 游戏结束
+    void enterGameOver();
 
     // 切换暂停/继续
     void togglePause();

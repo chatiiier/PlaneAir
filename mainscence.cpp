@@ -34,6 +34,7 @@ Mainscence::Mainscence(const QString &nickname, QWidget *parent) :
     // 初始化爆炸和分数
     m_score = 0;
     resetBombs();
+    resetEnemyBullets();
 
     // 初始化随机种子（只调用一次）
     qsrand(static_cast<uint>(QTime::currentTime().msec()));
@@ -63,9 +64,26 @@ Mainscence::Mainscence(const QString &nickname, QWidget *parent) :
             }
             updateEnemies();
 
-            // 碰撞检测与爆炸
+            // 敌机射击
+            updateEnemyShooting();
+            updateEnemyBullets();
+
+            // 碰撞检测
             checkHeroBulletEnemyCollisions();
+            checkEnemyBulletHeroCollisions();
+            checkEnemyHeroCollisions();
+
+            // 英雄无敌状态更新
+            m_hero.updateDamageState(GAME_RATE);
+
+            // 爆炸动画
             updateBombs();
+
+            // 检查玩家是否死亡
+            if (m_hero.isDead())
+            {
+                enterGameOver();
+            }
         }
         update();
     });
@@ -123,7 +141,20 @@ void Mainscence::paintEvent(QPaintEvent *event)
         }
     }
 
-    // 3. 绘制英雄子弹
+    // 3. 绘制敌方子弹
+    for (int i = 0; i < ENEMY_BULLET_POOL_SIZE; ++i)
+    {
+        if (!m_enemyBullets[i].m_free)
+        {
+            painter.drawPixmap(
+                m_enemyBullets[i].m_x,
+                m_enemyBullets[i].m_y,
+                m_enemyBullets[i].m_pixmap
+            );
+        }
+    }
+
+    // 4. 绘制英雄子弹
     for (int i = 0; i < HERO_BULLET_POOL_SIZE; ++i)
     {
         if (!m_hero.m_bullets[i].m_free)
@@ -136,7 +167,7 @@ void Mainscence::paintEvent(QPaintEvent *event)
         }
     }
 
-    // 4. 绘制爆炸动画
+    // 5. 绘制爆炸动画
     for (int i = 0; i < BOMB_POOL_SIZE; ++i)
     {
         if (!m_bombs[i].m_free
@@ -151,15 +182,18 @@ void Mainscence::paintEvent(QPaintEvent *event)
         }
     }
 
-    // 5. 绘制英雄机
-    painter.drawPixmap(m_hero.m_x, m_hero.m_y, m_hero.m_plane);
+    // 6. 绘制英雄机（无敌闪烁期间可能不绘制）
+    if (m_hero.shouldDraw())
+    {
+        painter.drawPixmap(m_hero.m_x, m_hero.m_y, m_hero.m_plane);
+    }
 
-    // 6. 绘制 HUD（昵称、分数、弹药）
+    // 7. 绘制 HUD（昵称、生命、分数、弹药）
     {
         // 半透明底色
         painter.setBrush(QColor(0, 0, 0, 120));
         painter.setPen(Qt::NoPen);
-        painter.drawRect(0, 0, GAME_WIDTH, 72);
+        painter.drawRect(0, 0, GAME_WIDTH, 96);
 
         // 昵称（第一行）
         painter.setPen(QColor(255, 255, 100));
@@ -171,14 +205,23 @@ void Mainscence::paintEvent(QPaintEvent *event)
         painter.drawText(QRect(0, 2, GAME_WIDTH, 22),
                          Qt::AlignCenter, nameText);
 
-        // 分数（第二行）
+        // 生命（第二行）
+        painter.setPen(QColor(0, 255, 100));
+        painter.setFont(hudFont);
+        QString hpText = QStringLiteral("生命：%1 / %2")
+                             .arg(m_hero.m_hp)
+                             .arg(m_hero.m_maxHp);
+        painter.drawText(QRect(0, 26, GAME_WIDTH, 22),
+                         Qt::AlignCenter, hpText);
+
+        // 分数（第三行）
         painter.setPen(Qt::white);
         painter.setFont(hudFont);
         QString scoreText = QStringLiteral("分数：%1").arg(m_score);
-        painter.drawText(QRect(0, 26, GAME_WIDTH, 22),
+        painter.drawText(QRect(0, 48, GAME_WIDTH, 22),
                          Qt::AlignCenter, scoreText);
 
-        // 弹药（第三行）
+        // 弹药（第四行）
         QString ammoText;
         if (m_hero.m_reloading)
         {
@@ -190,11 +233,11 @@ void Mainscence::paintEvent(QPaintEvent *event)
                            .arg(m_hero.m_currentAmmo)
                            .arg(HERO_MAGAZINE_CAPACITY);
         }
-        painter.drawText(QRect(0, 48, GAME_WIDTH, 22),
+        painter.drawText(QRect(0, 72, GAME_WIDTH, 22),
                          Qt::AlignCenter, ammoText);
     }
 
-    // 7. 暂停遮罩
+    // 8. 暂停遮罩
     if (m_state == StatePaused)
     {
         // 半透明黑色遮罩
@@ -222,6 +265,38 @@ void Mainscence::paintEvent(QPaintEvent *event)
                          Qt::AlignHCenter | Qt::AlignTop,
                          QStringLiteral("按 P 继续"));
     }
+
+    // 9. 游戏结束遮罩
+    if (m_state == StateGameOver)
+    {
+        // 半透明黑色遮罩
+        painter.setBrush(QColor(0, 0, 0, 180));
+        painter.setPen(Qt::NoPen);
+        painter.drawRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+        // 白色文字
+        painter.setPen(Qt::white);
+        QFont font;
+        font.setPixelSize(36);
+        font.setBold(true);
+        painter.setFont(font);
+
+        painter.drawText(QRect(0, GAME_HEIGHT / 2 - 60, GAME_WIDTH, 50),
+                         Qt::AlignHCenter | Qt::AlignBottom,
+                         QStringLiteral("游戏结束"));
+
+        font.setPixelSize(20);
+        font.setBold(false);
+        painter.setFont(font);
+
+        QString finalScoreText = QStringLiteral("最终分数：%1").arg(m_score);
+        painter.drawText(QRect(0, GAME_HEIGHT / 2 - 10, GAME_WIDTH, 30),
+                         Qt::AlignCenter, finalScoreText);
+
+        painter.drawText(QRect(0, GAME_HEIGHT / 2 + 40, GAME_WIDTH, 30),
+                         Qt::AlignCenter,
+                         QStringLiteral("关闭窗口返回登录"));
+    }
 }
 
 // 键盘按下事件
@@ -233,10 +308,13 @@ void Mainscence::keyPressEvent(QKeyEvent *event)
     if (event->key() == Qt::Key_Left  || event->key() == Qt::Key_A) { m_keyLeft  = true; return; }
     if (event->key() == Qt::Key_Right || event->key() == Qt::Key_D) { m_keyRight = true; return; }
 
-    // P 键：切换暂停，防止自动重复反复切换
+    // P 键：切换暂停（GameOver 时无效）
     if (event->key() == Qt::Key_P && !event->isAutoRepeat())
     {
-        togglePause();
+        if (m_state == StatePlaying || m_state == StatePaused)
+        {
+            togglePause();
+        }
         return;
     }
 
@@ -320,10 +398,11 @@ void Mainscence::togglePause()
         m_state = StatePaused;
         clearDirectionKeys();
     }
-    else
+    else if (m_state == StatePaused)
     {
         m_state = StatePlaying;
     }
+    // StateGameOver 时忽略
 }
 
 // 生成敌机
@@ -473,6 +552,180 @@ void Mainscence::resetBombs()
     {
         m_bombs[i].reset();
     }
+}
+
+// ============ 敌机射击 ============
+
+void Mainscence::updateEnemyShooting()
+{
+    for (int i = 0; i < ENEMY_POOL_SIZE; ++i)
+    {
+        if (m_enemies[i].m_free)
+        {
+            continue;
+        }
+
+        if (m_enemies[i].updateAndCheckShoot(GAME_RATE))
+        {
+            spawnEnemyBullet(m_enemies[i]);
+        }
+    }
+}
+
+void Mainscence::spawnEnemyBullet(EnemyPlane &enemy)
+{
+    if (enemy.m_free)
+    {
+        return;
+    }
+
+    // 寻找空闲敌方子弹
+    int freeIndex = -1;
+    for (int i = 0; i < ENEMY_BULLET_POOL_SIZE; ++i)
+    {
+        if (m_enemyBullets[i].m_free)
+        {
+            freeIndex = i;
+            break;
+        }
+    }
+
+    if (freeIndex == -1)
+    {
+        return; // 对象池已满，丢弃本次射击
+    }
+
+    // 确定子弹类型
+    EnemyBulletType bulletType;
+    if (enemy.m_type == EnemyHeavy)
+    {
+        bulletType = EnemyBulletHeavy;
+    }
+    else
+    {
+        bulletType = EnemyBulletLight;
+    }
+
+    // 从敌机底部中心发射
+    int bulletX = enemy.m_x + enemy.m_pixmap.width() / 2;
+    int bulletY = enemy.m_y + enemy.m_pixmap.height();
+
+    m_enemyBullets[freeIndex].activate(bulletType, bulletX, bulletY);
+
+    // 激活后调整 X 使子弹居中于敌机
+    if (m_enemyBullets[freeIndex].m_pixmap.width() > 0)
+    {
+        m_enemyBullets[freeIndex].m_x =
+            bulletX - m_enemyBullets[freeIndex].m_pixmap.width() / 2;
+        m_enemyBullets[freeIndex].m_rect.moveTo(
+            m_enemyBullets[freeIndex].m_x,
+            m_enemyBullets[freeIndex].m_y);
+    }
+}
+
+void Mainscence::updateEnemyBullets()
+{
+    for (int i = 0; i < ENEMY_BULLET_POOL_SIZE; ++i)
+    {
+        if (!m_enemyBullets[i].m_free)
+        {
+            m_enemyBullets[i].updatePosition();
+        }
+    }
+}
+
+void Mainscence::resetEnemyBullets()
+{
+    for (int i = 0; i < ENEMY_BULLET_POOL_SIZE; ++i)
+    {
+        m_enemyBullets[i].reset();
+    }
+}
+
+// ============ 敌方子弹 vs 英雄机碰撞 ============
+
+void Mainscence::checkEnemyBulletHeroCollisions()
+{
+    for (int i = 0; i < ENEMY_BULLET_POOL_SIZE; ++i)
+    {
+        if (m_enemyBullets[i].m_free)
+        {
+            continue;
+        }
+
+        if (m_enemyBullets[i].m_rect.intersects(m_hero.m_rect))
+        {
+            int damage = m_enemyBullets[i].m_damage;
+
+            // 回收敌方子弹
+            m_enemyBullets[i].reset();
+
+            // 伤害英雄机
+            m_hero.takeDamage(damage);
+
+            // 如果玩家死亡，不再继续检查后续子弹
+            if (m_hero.isDead())
+            {
+                return;
+            }
+        }
+    }
+}
+
+// ============ 敌机 vs 英雄机碰撞 ============
+
+void Mainscence::checkEnemyHeroCollisions()
+{
+    for (int i = 0; i < ENEMY_POOL_SIZE; ++i)
+    {
+        if (m_enemies[i].m_free)
+        {
+            continue;
+        }
+
+        if (m_enemies[i].m_rect.intersects(m_hero.m_rect))
+        {
+            // 保存位置信息后销毁敌机
+            int centerX = m_enemies[i].m_x
+                          + m_enemies[i].m_pixmap.width() / 2;
+            int centerY = m_enemies[i].m_y
+                          + m_enemies[i].m_pixmap.height() / 2;
+
+            // 激活爆炸
+            activateBomb(centerX, centerY);
+
+            // 销毁敌机（不加分）
+            m_enemies[i].reset();
+
+            // 对英雄机造成 1 点伤害
+            m_hero.takeDamage(1);
+
+            // 如果玩家死亡，停止后续检测
+            if (m_hero.isDead())
+            {
+                return;
+            }
+        }
+    }
+}
+
+// ============ 游戏结束 ============
+
+void Mainscence::enterGameOver()
+{
+    // 只执行一次
+    if (m_state == StateGameOver)
+    {
+        return;
+    }
+
+    m_state = StateGameOver;
+
+    // 清空方向键状态，停止移动
+    clearDirectionKeys();
+
+    // 强制显示英雄机
+    m_hero.m_visible = true;
 }
 
 Mainscence::~Mainscence()

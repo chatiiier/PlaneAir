@@ -14,6 +14,9 @@ HeroPlane::HeroPlane()
 
     // 初始化武器
     resetWeapon();
+
+    // 初始化生命值
+    resetHealth();
 }
 
 // 移动
@@ -27,9 +30,9 @@ void HeroPlane::setPostion(int x, int y)
 // 重置武器状态
 void HeroPlane::resetWeapon()
 {
-    m_currentAmmo    = HERO_MAGAZINE_CAPACITY;
-    m_reloading      = false;
-    m_shootElapsedMs = 0;
+    m_currentAmmo     = HERO_MAGAZINE_CAPACITY;
+    m_reloading       = false;
+    m_shootElapsedMs  = 0;
     m_reloadElapsedMs = 0;
 
     for (int i = 0; i < HERO_BULLET_POOL_SIZE; ++i)
@@ -145,4 +148,93 @@ void HeroPlane::startReload()
     m_reloading       = true;
     m_reloadElapsedMs = 0;
     m_shootElapsedMs  = 0;
+}
+
+// ============ 生命值与无敌状态 ============
+
+void HeroPlane::resetHealth()
+{
+    m_maxHp = HERO_MAX_HP;
+    m_hp    = HERO_MAX_HP;
+
+    m_invincible          = false;
+    m_invincibleElapsedMs = 0;
+
+    m_blinkElapsedMs = 0;
+    m_visible        = true;
+}
+
+bool HeroPlane::takeDamage(int damage)
+{
+    if (damage <= 0)
+    {
+        return false;
+    }
+    if (isDead())
+    {
+        return false;
+    }
+    if (m_invincible)
+    {
+        return false;
+    }
+
+    m_hp -= damage;
+    if (m_hp < 0)
+    {
+        m_hp = 0;
+    }
+
+    if (m_hp > 0)
+    {
+        // 进入无敌状态
+        m_invincible          = true;
+        m_invincibleElapsedMs = 0;
+        m_blinkElapsedMs      = 0;
+        m_visible             = true;
+    }
+    else
+    {
+        m_visible = true;
+    }
+
+    return true;
+}
+
+void HeroPlane::updateDamageState(int deltaMs)
+{
+    if (!m_invincible)
+    {
+        m_visible = true;
+        return;
+    }
+
+    m_invincibleElapsedMs += deltaMs;
+    m_blinkElapsedMs      += deltaMs;
+
+    // 闪烁：每超过一次间隔就切换可见性
+    while (m_blinkElapsedMs >= HERO_BLINK_INTERVAL)
+    {
+        m_blinkElapsedMs -= HERO_BLINK_INTERVAL;
+        m_visible = !m_visible;
+    }
+
+    // 无敌时间结束
+    if (m_invincibleElapsedMs >= HERO_INVINCIBLE_TIME)
+    {
+        m_invincible          = false;
+        m_invincibleElapsedMs = 0;
+        m_blinkElapsedMs      = 0;
+        m_visible             = true;
+    }
+}
+
+bool HeroPlane::isDead() const
+{
+    return m_hp <= 0;
+}
+
+bool HeroPlane::shouldDraw() const
+{
+    return m_visible;
 }
